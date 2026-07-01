@@ -19,9 +19,14 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapPost("/api/auth/login", (IConfiguration config) =>
+app.MapPost("/api/auth/login/{serviceName}", (string serviceName, IConfiguration config) =>
 {
-    var audiences = config.GetSection("Jwt:Audiences").Get<string[]>() ?? [];
+    var audience = config[$"Jwt:Audiences:{serviceName}"];
+
+    if (string.IsNullOrWhiteSpace(audience))
+    {
+        return Results.BadRequest($"Invalid service name: {serviceName}");
+    }
 
     var claims = new List<Claim>
     {
@@ -29,11 +34,6 @@ app.MapPost("/api/auth/login", (IConfiguration config) =>
         new Claim(ClaimTypes.Name, "admin"),
         new Claim(ClaimTypes.Role, "Admin")
     };
-
-    foreach (var audience in audiences)
-    {
-        claims.Add(new Claim(JwtRegisteredClaimNames.Aud, audience));
-    }
 
     var key = new SymmetricSecurityKey(
         Encoding.UTF8.GetBytes(config["Jwt:Key"]!)
@@ -46,6 +46,7 @@ app.MapPost("/api/auth/login", (IConfiguration config) =>
 
     var token = new JwtSecurityToken(
         issuer: config["Jwt:Issuer"],
+        audience: audience,
         claims: claims,
         expires: DateTime.UtcNow.AddHours(2),
         signingCredentials: credentials
@@ -55,6 +56,8 @@ app.MapPost("/api/auth/login", (IConfiguration config) =>
 
     return Results.Ok(new
     {
+        service = serviceName,
+        audience,
         token = jwt
     });
 });
