@@ -5,32 +5,35 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
+app.UseHttpsRedirection();
 
 app.MapPost("/api/auth/login", (IConfiguration config) =>
 {
-    // Demo only. Later validate username/password from DB.
+    var audiences = config.GetSection("Jwt:Audiences").Get<string[]>() ?? [];
+
     var claims = new List<Claim>
     {
         new Claim(ClaimTypes.NameIdentifier, "1"),
         new Claim(ClaimTypes.Name, "admin"),
         new Claim(ClaimTypes.Role, "Admin")
     };
+
+    foreach (var audience in audiences)
+    {
+        claims.Add(new Claim(JwtRegisteredClaimNames.Aud, audience));
+    }
 
     var key = new SymmetricSecurityKey(
         Encoding.UTF8.GetBytes(config["Jwt:Key"]!)
@@ -43,7 +46,6 @@ app.MapPost("/api/auth/login", (IConfiguration config) =>
 
     var token = new JwtSecurityToken(
         issuer: config["Jwt:Issuer"],
-        audience: config["Jwt:Audience"],
         claims: claims,
         expires: DateTime.UtcNow.AddHours(2),
         signingCredentials: credentials
@@ -51,9 +53,11 @@ app.MapPost("/api/auth/login", (IConfiguration config) =>
 
     var jwt = new JwtSecurityTokenHandler().WriteToken(token);
 
-    return Results.Ok(new { token = jwt });
+    return Results.Ok(new
+    {
+        token = jwt
+    });
 });
-app.UseHttpsRedirection();
 
 app.UseAuthorization();
 
